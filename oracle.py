@@ -1,5 +1,6 @@
 import sys
 import socket
+import struct
 
 def create_network_matrix(filepath):
     upper_triangle = []
@@ -28,6 +29,15 @@ def create_network_matrix(filepath):
             
     return matrix
 
+def build_link_state(node_id, node_map, matrix):
+    i = ord(node_id) - ord('A')
+    tuples = [i] + [j for j in range(len(matrix)) if matrix[i][j] > 0]
+    msg = struct.pack('!B', len(tuples))
+    for j in tuples:
+        ip_addr, udp_port = node_map[chr(ord('A') + j)]
+        msg += struct.pack('!c4sHI', chr(ord('A') + j).encode(), socket.inet_aton(ip_addr), udp_port, matrix[i][j])
+    return msg
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Config file?\n")
@@ -40,7 +50,7 @@ if __name__ == "__main__":
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('0.0.0.0', 5000))
+    server_socket.bind(('', 5000))
     server_socket.listen(26)
 
     num_nodes = len(network_matrix)
@@ -63,10 +73,9 @@ if __name__ == "__main__":
         
         print(f"Received connection from {ip_addr}:{udp_port}")
 
-    static_message = b"Hello from Oracle!"
     for node_id, active_socket in client_sockets.items():
-        active_socket.sendall(static_message)
-        print(f"Successfully sent to Node {node_id}")
+        active_socket.sendall(build_link_state(node_id, node_map, network_matrix))
+        print(f"Successfully sent LINK-STATE to Node {node_id}")
         
 
     
