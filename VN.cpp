@@ -53,8 +53,6 @@ int main(int argc, char *argv[])
 
     int udp_sockfd, tcp_sockfd; 
     struct sockaddr_in my_addr;
-    struct sockaddr_in their_addr;
-    int sin_size;
 
     //TCP bind
     tcp_sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -142,7 +140,7 @@ int main(int argc, char *argv[])
                 lsp.count++;
             }
             sendto(udp_sockfd, &lsp, sizeof(lsp), 0, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
-            cout << "Sent own LSP seq after ON update" << mySeq << endl;
+            cout << "Sent own LSP seq " << mySeq << "after ON update" << endl;
         
         }
 

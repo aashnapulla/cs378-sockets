@@ -104,7 +104,13 @@ if __name__ == "__main__":
 
         # remove disconnected nodes if any
         for node_id, active_socket in list(client_sockets.items()):
-            if active_socket in readable and not active_socket.recv(1):
+            if active_socket not in readable:
+                continue
+            try:
+                data = active_socket.recv(1)
+            except ConnectionError:
+                data = b''
+            if not data:
                 print(f"node {node_id} disconnected")
                 active_socket.close()
                 del client_sockets[node_id]
