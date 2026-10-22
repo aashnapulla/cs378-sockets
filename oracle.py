@@ -1,6 +1,7 @@
 import sys
 import socket
 import struct
+import select
 
 def create_network_matrix(filepath):
     upper_triangle = []
@@ -15,6 +16,9 @@ def create_network_matrix(filepath):
             upper_triangle.append(costs)
 
     num_nodes = len(upper_triangle) + 1
+    for i in range(len(upper_triangle)):
+        if len(upper_triangle[i]) != num_nodes - 1 - i or any(c == 0 or c < -1 for c in upper_triangle[i]):
+            raise ValueError("Bad config file")
     matrix = [[-1 for _ in range(num_nodes)] for _ in range(num_nodes)]
     
     for i in range(num_nodes):
@@ -76,6 +80,46 @@ if __name__ == "__main__":
     for node_id, active_socket in client_sockets.items():
         active_socket.sendall(build_link_state(node_id, node_map, network_matrix))
         print(f"Successfully sent LINK-STATE to Node {node_id}")
+
+    while True:
+        readable, _, _ = select.select([server_socket] + list(client_sockets.values()), [], [], 1)
+
+        if server_socket in readable:
+            client_socket, addr = server_socket.accept()
+            data = client_socket.recv(6)
+            if len(data) < 6:
+                print("Received data is too short.")
+            else:
+                ip_addr = socket.inet_ntoa(data[:4])
+                udp_port = int.from_bytes(data[4:6], byteorder='big')
+                node_id = chr(ord('A') + seen_nodes)
+                client_sockets[node_id] = client_socket
+                seen_nodes += 1
+                client_socket.sendall(struct.pack('!Bc4sHI', 1, node_id.encode(), data[:4], udp_port, 0))
+                print(f"Received connection from {ip_addr}:{udp_port}, Node {node_id} is an island")
+
+        for node_id, active_socket in list(client_sockets.items()):
+            if active_socket in readable and not active_socket.recv(1):
+                print(f"Node {node_id} disconnected")
+                active_socket.close()
+                del client_sockets[node_id]
+
+        try:
+            new_matrix = create_network_matrix(sys.argv[1])
+        except (OSError, ValueError):
+            print("Config file unreadable, ignoring")
+            continue
+        if len(new_matrix) != num_nodes:
+            print("Number of nodes changed, ignoring")
+        elif new_matrix != network_matrix:
+            network_matrix = new_matrix
+            print("Config changed")
+            for row in network_matrix:
+                print("\t".join(str(val) for val in row))
+            for node_id in node_map:
+                if node_id in client_sockets:
+                    client_sockets[node_id].sendall(build_link_state(node_id, node_map, network_matrix))
+                    print(f"Successfully sent LINK-STATE to Node {node_id}")
         
 
     
