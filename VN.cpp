@@ -42,6 +42,18 @@ struct LSP {
     LinkCost links[26]; //fixed size cuz maximum 26 links
 } __attribute__((packed));
 
+void floodLSP(int udp_sockfd, const LSP& lsp, uint8_t numLinks, const LinkTuple links[]) {
+    for (int i = 0; i < numLinks; i++) {
+        if (links[i].cost == 0) continue;
+        struct sockaddr_in nb_addr;
+        nb_addr.sin_family = AF_INET;
+        nb_addr.sin_port = links[i].udpPort;
+        nb_addr.sin_addr.s_addr = links[i].ipAddress;
+        memset(&(nb_addr.sin_zero), '\0', 8);
+        sendto(udp_sockfd, &lsp, sizeof(lsp), 0, (struct sockaddr *)&nb_addr, sizeof(struct sockaddr));
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if(argc!=3) {
@@ -128,20 +140,9 @@ int main(int argc, char *argv[])
                 cout << (i ? "," : "") << links[i].id << "=" << ntohl(links[i].cost);
             }
             cout << endl;
-            //send own LSP on link-state change
-            LSP lsp;
-            lsp.src = myId;
-            lsp.seq = htonl(++mySeq);
-            lsp.count = 0;
-            for (int i = 0; i < numLinks; i++) {
-                if (links[i].cost == 0) continue;
-                lsp.links[lsp.count].id = links[i].id;
-                lsp.links[lsp.count].cost = links[i].cost;
-                lsp.count++;
-            }
-            sendto(udp_sockfd, &lsp, sizeof(lsp), 0, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
-            cout << "Sent own LSP seq " << mySeq << "after ON update" << endl;
-        
+            //send own LSP on a link-state change through our periodic update
+            //after waiting 2 seconds
+            lastSent = time(NULL) - 8;        
         }
 
         //receive LSP from neighbors
@@ -162,15 +163,7 @@ int main(int argc, char *argv[])
                 //update graph with new LSP
                 for (int j = 0; j < lsp.count; j++) graph[o][lsp.links[j].id - 'A'] = ntohl(lsp.links[j].cost);
                 //send LSP to neighbours 
-                for (int i = 0; i < numLinks; i++) {
-                    if (links[i].cost == 0) continue;
-                    struct sockaddr_in nb_addr;
-                    nb_addr.sin_family = AF_INET;
-                    nb_addr.sin_port = links[i].udpPort;
-                    nb_addr.sin_addr.s_addr = links[i].ipAddress;
-                    memset(&(nb_addr.sin_zero), '\0', 8);
-                    sendto(udp_sockfd, &lsp, sizeof(lsp), 0, (struct sockaddr *)&nb_addr, sizeof(struct sockaddr));
-                }
+                floodLSP(udp_sockfd, lsp, numLinks, links);
             }
         }
 
@@ -186,7 +179,12 @@ int main(int argc, char *argv[])
                 lsp.links[lsp.count].cost = links[i].cost;
                 lsp.count++;
             }
-            sendto(udp_sockfd, &lsp, sizeof(lsp), 0, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
+            int o = myId - 'A';
+            lastSeq[o] = ntohl(lsp.seq);
+            for (int j = 0; j < 26; j++) graph[o][j] = -1;
+            graph[o][o] = 0;
+            for (int j = 0; j < lsp.count; j++) graph[o][lsp.links[j].id - 'A'] = ntohl(lsp.links[j].cost);
+            floodLSP(udp_sockfd, lsp, numLinks, links);
             cout << "Sent own LSP seq " << mySeq << endl;
             lastSent = time(NULL);
         }
