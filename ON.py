@@ -39,6 +39,7 @@ def build_link_state(node_id, node_map, matrix):
     msg = struct.pack('!B', len(tuples))
     for j in tuples:
         ip_addr, udp_port = node_map[chr(ord('A') + j)]
+        # c - char; 4s - 4byte string; 16bit string (short); 32bit string (long)
         msg += struct.pack('!c4sHI', chr(ord('A') + j).encode(), socket.inet_aton(ip_addr), udp_port, matrix[i][j])
     return msg
 
